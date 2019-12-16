@@ -58,7 +58,7 @@ Compilation:
 Testing:
 --------
 
-See the makefile
+See the makefile.
 	
 	# make run_md5 NT=1
 	# make run_sha1 NT=2 

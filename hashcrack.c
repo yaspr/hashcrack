@@ -277,7 +277,7 @@ int main(int argc, char **argv)
   //
   if (argc < 5)
     return printf("Usage: %s [-algorithm] [dictionary file path] [hash to crack] [number of threads]\n"
-		  "          Hashing algorithms: md5, sha1, sh224, sha256, sha512\n", argv[0]), 2;
+		  "\n\tHashing algorithms: md5, sha1, sha224, sha256, sha512\n\n", argv[0]), 2;
   
   //
   u64 nt = atoll(argv[4]);
