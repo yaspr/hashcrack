@@ -26,6 +26,9 @@ typedef struct dictionary_s {
 
   //
   u64 size;
+
+  //
+  u64 rounds;
   
 } dictionary_t;
 
@@ -61,14 +64,12 @@ typedef struct thread_task_s {
 //
 ascii yhashcrack_logo[] =
 
-  "        _    _           _      _____                _     \n"
-  "       | |  | |         | |    / ____|              | |    \n"
-  "  _   _| |__| | __ _ ___| |__ | |     _ __ __ _  ___| | __ \n"
-  " | | | |  __  |/ _` / __| '_ \\| |    | '__/ _` |/ __| |/ / \n"
-  " | |_| | |  | | (_| \\__ | | | | |____| | | (_| | (__|   <  \n"
-  "  \\__, |_|  |_|\\__,_|___|_| |_|\\_____|_|  \\__,_|\\___|_|\\_\\ \n"
-  "   __/ |                                                   \n"
-  "  |___/                                                    \n";
+  "     _____         _   _____             _   \n"
+  " _ _|  |  |___ ___| |_|     |___ ___ ___| |_ \n"
+  "| | |     | .'|_ -|   |   --|  _| .'|  _| '_|\n"
+  "|_  |__|__|__,|___|_|_|_____|_| |__,|___|_,_|\n"
+  "|___|                                        \n"
+;
 
 //
 dictionary_t *create_dictionary(u64 max_n, u64 max_len)
@@ -83,9 +84,10 @@ dictionary_t *create_dictionary(u64 max_n, u64 max_len)
   if (!d->list)
     return printf("Error: cannot allocate dictionary list\n"), NULL;
   
-  d->n     = 0;
-  d->max_n = max_n;
-  d->size  = 0;
+  d->n      = 0;
+  d->max_n  = max_n;
+  d->size   = 0;
+  d->rounds = 0;
   
   for (u64 i = 0; i < max_n; i++)
     {
@@ -111,9 +113,10 @@ void destroy_dictionary(dictionary_t *d)
       
       free(d->list);
       
-      d->n     = 0;
-      d->max_n = 0;
-      d->size  = 0;
+      d->n      = 0;
+      d->max_n  = 0;
+      d->size   = 0;
+      d->rounds = 0;
     }
   else
     printf("Error: dictionary pointer is NULL\n"), exit(5);
@@ -124,9 +127,16 @@ ascii load_dictionary(FILE *fp, dictionary_t *d)
 {
   u64 i = 0;
   ascii done = 1;
+  f64 elapsed = 0.0;
+  struct timespec after, before;
   
   if (fp)
     {
+      printf("Loading dictionary block");
+      fflush(stdout);
+
+      clock_gettime(CLOCK_MONOTONIC_RAW, &before);
+      
       while (i < d->max_n && done != EOF)
 	{
 	  done = fscanf(fp, "%s\n", d->list[i]);
@@ -137,6 +147,12 @@ ascii load_dictionary(FILE *fp, dictionary_t *d)
 	}
       
       d->n = i;
+
+      clock_gettime(CLOCK_MONOTONIC_RAW, &after);
+
+      elapsed = (f64)(after.tv_sec - before.tv_sec);
+      
+      printf(" (%llu MiB) in %.3lf s\n", d->size >> 20, elapsed);
     }
   
   return (done == EOF) ? 0 : 1;
@@ -373,7 +389,6 @@ int main(int argc, char **argv)
     return printf("Error: cannot open file '%s'\n", argv[3]), 3;
 
   u8 found = 0;
-  u64 rounds = 1;
   ascii *password = NULL;
   u8 target_hash[hash_len];
   struct timespec lu_after, lu_before;
@@ -401,33 +416,33 @@ int main(int argc, char **argv)
       
       f64 lu_elapsed = (f64)(lu_after.tv_sec - lu_before.tv_sec);
 
+      //Total searched memory size 
       size += d->size;
       
-      printf("[%llu] Tested %llu passwords  (%llu MiB) in %.2lf seconds\n", rounds, d->n * rounds, d->size >> 20, lu_elapsed);
-
-      d->size = 0;
+      printf("Hashed and compared %llu passwords (%llu MiB), in %.2lf seconds\n\n", d->n, d->size >> 20, lu_elapsed);
       
       if (found)
 	break;
-      
-      rounds++;
+
+      d->size = 0;
+      d->rounds++;
     }
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &all_after);
   
   if (found)
-    printf("\n### Cracked!! Found password: '%s'\n\n", password);
+    printf("### Cracked :]  password: '%s'\n\n", password);
   else
-    printf("\n### Sorry! No password matched the given hash\n\n");
+    printf("### Sorry! No password matched the given %s hash\n\n", argv[1]);
 
   f64 all_elapsed = (f64)(all_after.tv_sec - all_before.tv_sec);
-
-  printf("Total cracking run time: %.3lf seconds, number of rounds: %llu, searched memory: ", all_elapsed, rounds);
-
+  
+  printf("Cracking run time: %.2lf seconds, %.2lf minutes; Number of rounds: %llu; Searched memory: ", all_elapsed, all_elapsed / 60.0, d->rounds);
+  
   if ((size >> 20) > 1024)
-    printf("%llu GiB\n", size >> 30);
+    printf("%llu GiB\n", (f64)size / (1024 * 1024 *1024));
   else
-    printf("%llu MiB\n", size >> 20);
+    printf("%llu MiB\n", (f64)size / (1024 * 1024));
   
   destroy_dictionary(d);
   free(d);
