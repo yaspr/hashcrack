@@ -54,7 +54,7 @@ typedef struct thread_task_s {
   u8 found;
   
   //The password (if found)
-  u8 *password;
+  ascii *password;
 
 } thread_task_t;
 
@@ -143,7 +143,7 @@ ascii load_dictionary(FILE *fp, dictionary_t *d)
 }
 
 //Convert a string to a hash 
-void cvt_str2hash(ascii *str, ascii *hash, u64 str_len)
+void cvt_str2hash(ascii *str, u8 *hash, u64 str_len)
 {
   u8 b;
   static u8 cvt_tab[6] = { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F };
@@ -197,15 +197,15 @@ u8 compare(const u8 *hash1, const u8 *hash2, u64 hash_len)
   return (d) ? 0 : 1;
 }
 
-//
-u8 lookup_hash_sequential(dictionary_t *d, ascii *target_hash, void (*hash_function)(const u8 *, const u64, u8 *), const u64 hash_len, ascii **password)
+//Currently unused!
+u8 lookup_hash_sequential(dictionary_t *d, u8 *target_hash, void (*hash_function)(const u8 *, const u64, u8 *), const u64 hash_len, ascii **password)
 {
   u8 found = 0;
   u8 hash[hash_len];
   
   for (u64 i = 0; i < d->n; i++)
     {
-      hash_function(d->list[i], strlen(d->list[i]), hash);
+      hash_function((u8 *)d->list[i], strlen(d->list[i]), hash);
 
       found = compare(target_hash, hash, hash_len);
       
@@ -219,23 +219,22 @@ u8 lookup_hash_sequential(dictionary_t *d, ascii *target_hash, void (*hash_funct
   return found;
 }
 
+//
 void *thread_task(void *arg)
 {
   thread_task_t *tt = (thread_task_t *)arg;
 
   u8 found = 0;
   ascii **list = tt->list;
-  ascii *target_hash = tt->target_hash;
+  u8 *target_hash = tt->target_hash;
   u64 hash_len = tt->hash_len;
   u8 hash[hash_len];
-  
-  printf(" ==> thread %u working on %llu passwords\n", (u32)tt->tid, tt->n);
   
   void (*hash_function)(const u8 *, const u64, u8 *) = tt->hash_function;
   
   for (u64 i = 0; i < tt->n; i++)
     {
-      hash_function(list[i], strlen(list[i]), hash);
+      hash_function((u8 *)list[i], strlen(list[i]), hash);
       
       found = compare(target_hash, hash, hash_len);
       
@@ -249,10 +248,12 @@ void *thread_task(void *arg)
 
   if (!found)
     tt->password = NULL;
+
+  return NULL;
 }
 
 //
-u8 lookup_hash_parallel(u64 nt, dictionary_t *d, ascii *target_hash, void (*hash_function)(const u8 *, const u64, u8 *), const u64 hash_len, ascii **password)
+u8 lookup_hash_parallel(u64 nt, dictionary_t *d, u8 *target_hash, void (*hash_function)(const u8 *, const u64, u8 *), const u64 hash_len, ascii **password)
 {
   u8 found = 0;
   u64 thread_n = d->n / nt;
@@ -310,36 +311,39 @@ int main(int argc, char **argv)
   
   if (!strcmp(argv[1], "md5"))
     {
-      hash_len = MD5_H_SIZE;
+      hash_len = MD5_HASH_SIZE;
       hash_function = md5hash;
     }
   else
     if (!strcmp(argv[1], "sha1"))
       {
-	hash_len = SHA1_H_SIZE;
+	hash_len = SHA1_HASH_SIZE;
 	hash_function = sha1hash;
       }
     else
       if (!strcmp(argv[1], "sha224"))
 	{
-	  hash_len = SHA224_H_SIZE;
+	  hash_len = SHA224_HASH_SIZE;
 	  hash_function = sha224hash;
 	}
       else
 	if (!strcmp(argv[1], "sha256"))
 	  {
-	    hash_len = SHA256_H_SIZE;
+	    hash_len = SHA256_HASH_SIZE;
 	    hash_function = sha256hash;
 	  }
 	else
 	  if (!strcmp(argv[1], "sha512"))
 	    {
-	      hash_len = SHA512_H_SIZE;
+	      hash_len = SHA512_HASH_SIZE;
 	      hash_function = sha512hash;
 	    }
 	  else
-	    printf("Error: unknown hashing algorithm '%s'\n", argv[1]), 2;
-
+	    {
+	      printf("Error: unknown hashing algorithm '%s'\n", argv[1]);
+	      exit(8);
+	    }
+  
   //Get number of threads
   u64 nt = atoll(argv[2]);
   
@@ -355,18 +359,19 @@ int main(int argc, char **argv)
   //Get file size
   u64 size = 0;
   struct stat sb;
+  u64 dictionary_size = 0;
   
   if (stat(argv[3], &sb) < 0)
     return printf("Error: cannot open file '%s'\n", argv[3]), 3;
   
-  size = sb.st_size;
+  dictionary_size = sb.st_size;
 
   //Open dictionary file
   FILE *fp = fopen(argv[3], "rb");
   
   if (!fp)
     return printf("Error: cannot open file '%s'\n", argv[3]), 3;
-  
+
   u8 found = 0;
   u64 rounds = 1;
   ascii *password = NULL;
@@ -382,7 +387,7 @@ int main(int argc, char **argv)
   if (!d)
     return printf("Error: cannot create dictionary\n"), 4;
   
-  printf("Dictionary file size: %llu MiB; %llu GiB\n\n", size >> 20, size >> 30);
+  printf("Dictionary file size: %llu MiB; %llu GiB\n\n", dictionary_size >> 20, dictionary_size >> 30);
 
   clock_gettime(CLOCK_MONOTONIC_RAW, &all_before);
   
@@ -395,6 +400,8 @@ int main(int argc, char **argv)
       clock_gettime(CLOCK_MONOTONIC_RAW, &lu_after);
       
       f64 lu_elapsed = (f64)(lu_after.tv_sec - lu_before.tv_sec);
+
+      size += d->size;
       
       printf("[%llu] Tested %llu passwords  (%llu MiB) in %.2lf seconds\n", rounds, d->n * rounds, d->size >> 20, lu_elapsed);
 
@@ -414,8 +421,13 @@ int main(int argc, char **argv)
     printf("\n### Sorry! No password matched the given hash\n\n");
 
   f64 all_elapsed = (f64)(all_after.tv_sec - all_before.tv_sec);
-  
-  printf("Total cracking run time: %.3lf seconds, number of rounds: %llu\n", all_elapsed, rounds);
+
+  printf("Total cracking run time: %.3lf seconds, number of rounds: %llu, searched memory: ", all_elapsed, rounds);
+
+  if ((size >> 20) > 1024)
+    printf("%llu GiB\n", size >> 30);
+  else
+    printf("%llu MiB\n", size >> 20);
   
   destroy_dictionary(d);
   free(d);
