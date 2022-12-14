@@ -1,0 +1,205 @@
+#+TITLE: yHashCrack: a dictionary based hash cracker
+#+AUTHOR: yaspr
+
+#+BEGIN_EXAMPLE
+             __            
+|_| _  _ |_ /   __ _  _ |  
+| |(_|_> | |\__ | (_|(_ |<
+
+#+END_EXAMPLE
+
+* Introduction
+
+Dictionany based hash cracker destined to be optimized.
+
+* Compilation:
+  
+  #+BEGIN_EXAMPLE
+
+  .
+  ├── dictionary
+  │   └── passwords.txt
+  ├── GPLv3.txt
+  ├── hashcrack.c
+  ├── Makefile
+  ├── README.html
+  ├── README.org
+  └── yhash
+      ├── common.c
+      ├── common.h
+      ├── GPLv3.txt
+      ├── libyhash.so
+      ├── Makefile
+      ├── md5hash
+      ├── md5hash.c
+      ├── md5main.c
+      ├── README.html
+      ├── README.org
+      ├── sha1hash
+      ├── sha1hash.c
+      ├── sha1main.c
+      ├── sha224hash
+      ├── sha224hash.c
+      ├── sha224main.c
+      ├── sha256hash
+      ├── sha256hash.c
+      ├── sha256main.c
+      ├── sha512hash
+      ├── sha512hash.c
+      ├── sha512main.c
+      └── yhash.h
+
+  #+END_EXAMPLE
+
+  1. Clone the yhash library git repo in the hashcrack directory
+
+  #+BEGIN_SRC sh
+  
+   	$ git clone https://github.com/yaspr/yhash.git
+
+  #+END_SRC
+
+  2. Compile the yhash library
+
+  #+BEGIN_SRC sh
+  
+   	$ cd yhash
+	$ make
+	$ cd ..
+
+  #+END_SRC
+  
+  3. Compile hashcrack
+
+  #+BEGIN_SRC sh
+
+     	$ make
+
+  #+END_SRC
+  	
+* Testing
+
+  The makefile contains a set of basic tests. The following are exmaples of how tests can be run (with *NT* being the number of threads):
+
+  #+BEGIN_SRC sh
+  
+	$ make run_md5 NT=1
+	$ make run_sha1 NT=2 
+	$ make run_dead256 NT=4
+	$ make run_dead512 NT=4
+
+  #+END_SRC	
+
+* How it works
+
+  1. Loads the dictionary
+
+  2. If single threaded, go through all dictionary entries and compare the entry's hash with the target hash.
+     If multi-threaded, assign to each thread its block of dictionary entries.
+     Each thread goes through all of its entries and compares their hashes with the target hash.
+
+  3. If the hash is found, the tool prints *CRACKED* in green on stdout. If the hash is not found, the tool prints
+     *FAILED* in red on stdout.
+
+* To do
+
+0. Optimize yhash (obviously!).
+
+1. Optimize by vectorizing the comparison between the calculated hash and the target hash.
+
+** Example
+
+  For MD5, the output hash is 128bits (16 bytes). On an x86 CPU with SSE, the whole hash can be stored
+  in one XMM register. Therefore, comparing two hashes is a simple 128-bit xor.
+  
+  #+BEGIN_SRC c
+  
+   xmm0 = target_MD5_hash;
+   xmm1 = { 1 };
+   
+   while (i < nb_words && xmm1)
+   {
+	xmm2 = md5hash(words_list[i++]);
+	xmm1 = xmm0 XOR xmm2;
+   }
+
+  #+END_SRC
+  
+  For SHA1, SHA224 & SHA256 the output hash can be stored in two XMM registers using SSE, or one YMM register
+  on a CPU with the AVX instruction set.
+
+  #+BEGIN_SRC c
+  
+   ymm0 = target_SHA?_hash;
+   ymm1 = { 1 };
+   
+   while (i < nb_words && ymm1)
+   {
+	ymm2 = sha?hash(words_list[i++]);
+	ymm1 = ymm0 XOR ymm2;
+   }
+
+  #+END_SRC
+  
+  For SHA512, two YMM registers can be used if AVX is available, or one ZMM register if the CPU supports AVX512.
+
+  #+BEGIN_SRC c
+  
+   zmm0 = target_SHA512_hash;
+   zmm1 = { 1 };
+   
+   while (i < nb_words && zmm1)
+   {
+	zmm2 = sha512hash(words_list[i++]);
+	zmm1 = zmm0 XOR zmm2; 
+   }
+
+ #+END_SRC
+ 
+*** Unrolling
+
+ This allows to check multiple entry hashes per iteration.
+ 
+**** Unroll 2
+
+ #+BEGIN_SRC c
+ 
+   xmm0 = target_MD5_hash;
+   xmm1 = { 1 };
+   xmm2 = { 1 };
+   
+   while (i < nb_words && xmm1 && xmm2)
+   {
+	xmm3 = md5hash(words_list[i]);
+	xmm4 = md5hash(words_list[i + 1]);
+
+	xmm1 = xmm0 XOR xmm3;
+	xmm2 = xmm0 XOR xmm4;
+   }
+
+ #+END_SRC
+ 
+**** Unroll 4
+
+ #+BEGIN_SRC c
+ 
+   xmm0 = target_MD5_hash;
+   xmm1 = { 1 };
+   xmm2 = { 1 };
+   xmm3 = { 1 };
+   xmm4 = { 1 };
+   
+   while (i < nb_words && xmm1 && xmm2 && xmm3 && xmm4)
+   {
+	xmm5 = md5hash(words_list[i]);
+	xmm6 = md5hash(words_list[i + 1]);
+	xmm7 = md5hash(words_list[i + 2]);
+	xmm8 = md5hash(words_list[i + 3]);
+
+	xmm1 = xmm0 XOR xmm5;
+	xmm2 = xmm0 XOR xmm6;
+	xmm3 = xmm0 XOR xmm7;
+	xmm4 = xmm0 XOR xmm8;
+   }
+
+ #+END_SRC
