@@ -143,7 +143,7 @@ ascii load_dictionary(FILE *fp, dictionary_t *d)
 }
 
 //Convert a string to a hash 
-void cvt_str2hash(ascii *str, u8 *hash, u64 str_len)
+void str_to_hash(ascii *str, u8 *hash, u64 str_len)
 {
   u8 b;
   static u8 cvt_tab[6] = { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F };
@@ -380,7 +380,7 @@ int main(int argc, char **argv)
   struct timespec all_after, all_before;
   
   //Convert parameter hash (string) into number form
-  cvt_str2hash(argv[4], target_hash, strlen(argv[4]));
+  str_to_hash(argv[4], target_hash, strlen(argv[4]));
   
   dictionary_t *d = create_dictionary(100000000, 32);
   
