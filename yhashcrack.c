@@ -440,9 +440,9 @@ int main(int argc, char **argv)
   printf("Cracking run time: %.2lf seconds, %.2lf minutes; Number of rounds: %llu; Searched memory: ", all_elapsed, all_elapsed / 60.0, d->rounds);
   
   if ((size >> 20) > 1024)
-    printf("%llu GiB\n", (f64)size / (1024 * 1024 *1024));
+    printf("%.2lf GiB\n", (f64)size / (1024 * 1024 *1024));
   else
-    printf("%llu MiB\n", (f64)size / (1024 * 1024));
+    printf("%.2lf MiB\n", (f64)size / (1024 * 1024));
   
   destroy_dictionary(d);
   free(d);
